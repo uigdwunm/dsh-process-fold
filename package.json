@@ -1,0 +1,54 @@
+{
+  "name": "dsh-process-fold",
+  "version": "0.1.1",
+  "description": "Fold DSH Web execution steps into compact expandable process boxes while keeping dialogue and final answers outside.",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "conversation-ui",
+    "process-fold"
+  ],
+  "homepage": "https://github.com/uigdwunm/dsh-process-fold#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/uigdwunm/dsh-process-fold.git"
+  },
+  "bugs": {
+    "url": "https://github.com/uigdwunm/dsh-process-fold/issues"
+  },
+  "type": "module",
+  "main": "./index.mjs",
+  "exports": {
+    ".": "./index.mjs",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.mjs",
+    "lib/client.js",
+    "cordis.patch.yml"
+  ],
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "node build.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "typescript": "^5.6.0"
+  },
+  "license": "MIT"
+}
