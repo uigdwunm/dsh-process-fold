@@ -1,0 +1,4 @@
+# dsh-process-fold bundle：挂载执行过程折叠插件（Node half 空，client half 自渲染方框）
+- insert:
+    - id: dsh-process-fold
+      name: 'dsh-process-fold'
