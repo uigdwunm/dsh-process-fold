@@ -1,5 +1,7 @@
 # dsh-process-fold
 
+[![awesome · DSH plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com/p/uigdwunm/dsh-process-fold/)
+
 [English](#english) | [中文](#中文)
 
 ## English
@@ -9,6 +11,8 @@
 It cooperates with the shipped turn-process disclosure instead of competing with it: while the official `N 次工具调用 ▾` row is present for a turn, that row is the only toggle — clicking it switches the turn between the latest two items and the whole process. When the official row is absent (a streaming turn, unloaded older history, the standard transcript view, or an interrupted/answerless turn), the plugin's own row takes its place: one per turn, styled like the official one (`N 次工具调用` on the left, chevron on the right, same sizes and tokens).
 
 User messages, steering messages, interactive `ask_user_question` prompts, and the final assistant answer remain outside the box and fully visible.
+
+Unlike auto-collapse plugins that replace a finished turn's process with a single timing row, this one keeps the process in place: it folds the items into a box you can reopen, and it never hides the user's own messages, interactive questions, errors, or the final answer. Stopping the plugin removes every style, attribute, label, and control it injected.
 
 ### Install
 
@@ -38,6 +42,8 @@ Restart `dsh web`, then refresh the page.
 它和官方自带的「过程折叠」按钮是协作关系而不是竞争关系：某一轮只要有官方那行「N 次工具调用 ▾」，那一行就是这一轮唯一的开关——点它在「最新两项」和「全部过程」之间切换；官方按钮不在场时（流式输出中、更早历史未加载完、官方设为标准显示、被中断或没有最终回答的轮次）由插件自己的那行顶替它——一轮一行，样式与官方一致（左侧「N 次工具调用」、右侧箭头，同样的尺寸和 token）。
 
 用户消息、用户重定向消息、交互式 `ask_user_question` 提问以及最终助手回答始终留在框外并完整显示。
+
+与把已结束轮次的过程替换成一行耗时摘要的自动折叠插件不同，本插件把过程留在原处：合并进一个可以随时重新展开的框，并且从不隐藏用户消息、交互提问、错误提示和最终回答。插件停用时，它注入的样式、属性、标签和控件全部清除。
 
 ### 安装
 

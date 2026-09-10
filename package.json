@@ -1,11 +1,12 @@
 {
   "name": "dsh-process-fold",
-  "version": "0.2.0",
-  "description": "Fold DSH Web execution steps into a compact process box that keeps the latest two items visible and stands in for the shipped turn-process disclosure.",
+  "version": "0.2.1",
+  "description": "Fold each DSH Web turn's thinking, tool calls and context into a compact expandable process box, and reuse the shipped turn-process disclosure row as the toggle whenever it exists.",
   "keywords": [
     "deepseek-harness",
     "dsh",
     "dsh-plugin",
+    "ui-plugin",
     "conversation-ui",
     "process-fold",
     "turn-process"
@@ -42,6 +43,16 @@
     },
     "client": {
       "platform": "web"
+    },
+    "catalog": {
+      "category": "ui",
+      "summary": {
+        "en": "Groups each DSH Web turn's thinking, tool calls and context into one bordered process box showing the latest two items collapsed, reusing the shipped turn-process row as the toggle when present.",
+        "zh": "把 DSH Web 每轮的思考、工具调用与上下文合并进一个带边框的过程框，折叠时只显示最新两项；官方「过程折叠」按钮在场时直接复用它作为开关。"
+      },
+      "capabilities": [
+        "client-ui"
+      ]
     }
   },
   "peerDependencies": {

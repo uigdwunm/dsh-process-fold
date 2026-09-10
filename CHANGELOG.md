@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1 - 2026-09-10
+
+- Declare `dsh.catalog` in `package.json` (`category: ui`, bilingual summary, `client-ui` capability) so the plugin shop publishes an authored listing instead of deriving one from the npm description.
+- Add the awesome-dsh-plugin badge, a screenshots section and a note on how the plugin differs from auto-collapse plugins to the README.
+- Reword the package description and add the `ui-plugin` keyword for npm search.
+
 ## 0.2.0 - 2026-09-10
 
 - Cooperate with the shipped turn-process disclosure: when `button[data-turn-process]` exists for a turn, the plugin drops its own row and the official button becomes that turn's only toggle.
