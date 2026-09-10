@@ -1,13 +1,14 @@
 {
   "name": "dsh-process-fold",
-  "version": "0.1.1",
-  "description": "Fold DSH Web execution steps into compact expandable process boxes while keeping dialogue and final answers outside.",
+  "version": "0.2.0",
+  "description": "Fold DSH Web execution steps into a compact process box that keeps the latest two items visible and stands in for the shipped turn-process disclosure.",
   "keywords": [
     "deepseek-harness",
     "dsh",
     "dsh-plugin",
     "conversation-ui",
-    "process-fold"
+    "process-fold",
+    "turn-process"
   ],
   "homepage": "https://github.com/uigdwunm/dsh-process-fold#readme",
   "repository": {

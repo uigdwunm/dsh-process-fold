@@ -5,24 +5,61 @@ export const name = 'dsh-process-fold-client'
 export const inject: string[] = []
 
 /**
- * 把每一轮的工具调用过程（思考 / 工具调用 / 上下文注入 / 转向 …）套进一个方框：
- * - 框内只显示「最新 2 项」，更早的项 `display:none` 隐藏；
- * - 最终文字结果留在框外、完整显示；
- * - 每个框下方一个「展开过程 / 折叠显示」按钮，点击切换，且切换时锚定按钮视口位置，
- *   让下方不动、只在框的上方涨/收。
+ * 把每轮的执行过程（思考 / 工具调用 / 上下文注入 …）套进一个方框：框内默认只显示最新 2 项，
+ * 展开时显示全部；最终文字回答、用户消息、提问交互始终留在框外完整显示。
+ *
+ * 折叠开关长得和官方「过程折叠」按钮一样（一行摘要 + 右侧箭头），放在过程区上方：
+ * - 官方按钮在场时，撤掉本插件这一行，直接用它当开关，并把它的箭头方向对齐本插件状态；
+ * - 官方按钮不在时（流式输出中、更早历史未加载完、官方设为标准显示、被中断或没有最终文字回答的轮次 …），
+ *   本插件这一行代替它显示，行为完全一致；一轮只出一个（一轮里的多个过程框一起折叠/展开）。
+ * - 本插件**不读取**官方按钮的 open / aria-expanded / data-* 状态。官方折叠时会给过程成员挂
+ *   `hidden="until-found"`，本插件只用 css 里的一条规则把它对「本插件要显示的项」失效掉，
+ *   所以无论官方状态如何，框内可见性始终由本插件自己的状态决定。
  *
  * `ctx` 用 `any`：`ClientContext` 类型声明在 dsh profile 树里（`@deepseek-ai/dsh-client-runtime/client`），
  * 本地仓库不安装官方包，构建（esbuild）不做类型检查；`typecheck` 只查我们自己的 TS 语法/类型。
  */
 export function apply(ctx: any): void {
   // —— 常量 ——
-  const ATTR = { boxPart: 'data-box-part', gap: 'data-box-gap', hidden: 'data-fold-hidden' } as const
-  const CLASS = { toggle: 'dsh-fold-toggle', label: 'dsh-fold-label' } as const
-  const FLOW = '.Md3f7G_flowItem'
-  const BODY = '.Sxvs8a_body'
+  const ATTR = {
+    boxPart: 'data-box-part',
+    gap: 'data-box-gap',
+    hidden: 'data-fold-hidden',
+    /**
+     * 官方折叠时藏的是整个流项（`hidden="until-found"` 挂在流项上），而框的可见项可能是流项内部的块。
+     * 子元素的样式救不了被父级 content-visibility 藏起来的内容，所以这里额外给"含可见项的流项"打标记，
+     * 由同一条 CSS 盾在流项层面失效官方的隐藏。
+     */
+    flowShow: 'data-fold-flow-show',
+    open: 'data-open',
+  } as const
+  const CLASS = { row: 'dsh-fold-row', rowLabel: 'dsh-fold-row-label', rowChevron: 'dsh-fold-row-chevron' } as const
+
+  /**
+   * 官方挂在流项上的稳定属性。旧的实现写死了 hash 类名（`.Md3f7G_flowItem` / `.Sxvs8a_body`），
+   * 那些类名会随官方构建变化（在当前 dsh 里已经不存在），所以一律改用这些属性：
+   * - `data-chat-flow-kind`：流项类型（assistant-step / tool-call / context / turn-process …）
+   * - `data-chat-turn`：所属轮次，同时是本插件折叠状态的键
+   * - `data-chat-flow-key`：流项唯一键（没有轮次号时的回退键）
+   */
+  const FLOW = '[data-chat-flow-kind]'
+  const TURN_ATTR = 'data-chat-turn'
+  const FLOW_KEY_ATTR = 'data-chat-flow-key'
+  /** 官方折叠按钮：既是点击源，也是「这一轮官方控件是否在场」的判据。 */
+  const OFFICIAL = '[data-turn-process]'
+
   // 用户的对话（user + steering）永远不进框：steering 是用户打断/重定向时的新输入，
   // 渲染成和 user 完全一样的右侧气泡（源码里二者都走 UserMessageNodeView）。
-  const BOUNDARY = new Set(['user', 'steering', 'turn-tail', 'manual-compaction'])
+  // 错误与中断提示同样是必须可见的信息，官方也把它们定义为不参与过程折叠的独立节点。
+  const BOUNDARY = new Set([
+    'user',
+    'steering',
+    'turn-tail',
+    'turn-error',
+    'turn-max-tokens',
+    'turn-process',
+    'manual-compaction',
+  ])
   const PROCESS = new Set(['tool-call', 'context'])
   /** 用户提问（ask_user_question）是必须可见的交互：不进框、不折叠，作为框的收口边界。 */
   const QUESTION_TOOL = '[data-tool="ask_user_question"]'
@@ -35,22 +72,70 @@ export function apply(ctx: any): void {
     [${ATTR.boxPart}="middle"] { border-top: none; border-bottom: none; border-radius: 0; }
     [${ATTR.boxPart}="end"] { border-top: none; border-radius: 0 0 8px 8px; }
     [${ATTR.boxPart}="only"] { border-radius: 8px; }
-    [${ATTR.gap}] { margin-top: -16px !important; }
+    /* 官方折叠时会把自己隐藏的成员挂上 hidden="until-found"；对本插件要显示的项失效掉。
+       流项层面一份（官方藏的是整个流项），内联块层面一份（官方藏的是 answer step 里的内联思考）。 */
+    [${ATTR.flowShow}][hidden="until-found"],
+    [${ATTR.boxPart}][hidden="until-found"] { content-visibility: visible !important; }
+    /* 同行内联思考被官方按"已隐藏"压缩了底部间距，本插件把它显示出来时要还回来。 */
+    [${ATTR.boxPart}][data-turn-process-inline][hidden] { margin-bottom: 0 !important; }
+    /* 同一正文容器内：间距来自 flex gap → 负 margin 抵消；跨流项：间距来自官方列的 margin-top → 归零。 */
+    [${ATTR.gap}="cancel"] { margin-top: -16px !important; }
+    [${ATTR.gap}="zero"] { margin-top: 0 !important; }
     [${ATTR.hidden}] { display: none !important; }
-    .${CLASS.toggle} { align-self: flex-start; margin: -10px 0 0; padding: 3px 10px; border: 1px solid ${BORDER}; border-radius: 6px; background: ${BG}; color: var(--dsw-alias-label-secondary, #888); font-size: 12px; line-height: 16px; cursor: pointer; user-select: none; }
-    .${CLASS.toggle}:hover { color: var(--dsw-alias-label-primary, #333); border-color: color-mix(in srgb, var(--dsw-alias-label-secondary) 70%, transparent); }
-    .${CLASS.label} { align-self: flex-start; margin: 0 0 -10px; padding: 0 2px; color: var(--dsw-alias-label-secondary, #888); font-size: 12px; line-height: 16px; user-select: none; }
+    /* 折叠开关：与官方 TurnProcessNodeView 同一套尺寸与 token，官方按钮不在时顶替它。 */
+    .${CLASS.row} { box-sizing: border-box; display: flex; align-items: center; width: 100%; min-width: 0; height: 33px; padding: 0 0 8px; border: none; border-bottom: .5px solid var(--dsw-alias-border-l2); background: none; color: var(--dsw-alias-label-secondary); font-size: 14px; line-height: 24px; text-align: left; cursor: pointer; }
+    .${CLASS.row}:not([${ATTR.open}]) { margin-bottom: 8px; }
+    .${CLASS.rowLabel} { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .${CLASS.rowChevron} { flex: none; width: 16px; height: 16px; margin-left: 6px; color: var(--dsw-alias-label-tertiary); transition: transform .1s; transform: rotate(-90deg); }
+    .${CLASS.row}[${ATTR.open}] .${CLASS.rowChevron} { transform: rotate(0); }
+    @media (prefers-reduced-motion: reduce) { .${CLASS.rowChevron} { transition: none; } }
   `
 
   // —— 状态 ——
-  const expanded = new WeakSet<Element>()
-  const buttons = new Map<Element, HTMLButtonElement>()
-  const labels = new Map<Element, HTMLElement>()
+  /** 展开状态按轮次存（官方按钮给的就是轮次号）；元素引用会在 React 重渲染时失效，不能当键。 */
+  const expandedTurns = new Set<string>()
+  /** 每轮一个折叠开关行，键是这一轮第一个过程框的流项。 */
+  const rows = new Map<Element, HTMLButtonElement>()
   let root: Element | null = null
   let observer: MutationObserver | null = null
 
   function scroller(): Element {
     return document.querySelector('[data-conversation-scroll]') ?? document.scrollingElement ?? document.documentElement
+  }
+
+  /** 流项所属轮次的键；没有轮次号时退回流项唯一键。 */
+  function keyOf(anchor: Element): string {
+    return anchor.getAttribute(TURN_ATTR) ?? anchor.getAttribute(FLOW_KEY_ATTR) ?? ''
+  }
+
+  /**
+   * assistant-step 的正文容器。官方结构是
+   * `flowItem > [data-slot]（槽位包装层，display:contents）> root > body`，
+   * 块（思考 / 文字 …）是 body 的直接子元素。槽位包装层必须跳过，否则会把 root 当成 body。
+   */
+  function bodyOf(flow: Element): Element | null {
+    const slot = flow.querySelector(':scope > [data-slot]')
+    const root = (slot ?? flow).firstElementChild
+    return root === null ? null : (root.firstElementChild as Element | null)
+  }
+
+  /** 思考块：可能是 ReasoningRow 本身，也可能被官方的内联思考包装层包着。 */
+  function isThinkBlock(el: Element): boolean {
+    return (
+      el.getAttribute('data-variant') === 'think' ||
+      el.hasAttribute('data-turn-process-inline') ||
+      el.firstElementChild?.getAttribute('data-variant') === 'think'
+    )
+  }
+
+  /** 当前在场的官方折叠按钮：轮次 → 按钮元素（每轮 applyFold 只查一次 DOM）。 */
+  function officialRows(scope: Element): Map<string, Element> {
+    const found = new Map<string, Element>()
+    for (const row of scope.querySelectorAll(OFFICIAL)) {
+      const turn = row.getAttribute('data-turn-process')
+      if (turn !== null && !found.has(turn)) found.set(turn, row)
+    }
+    return found
   }
 
   /** 把一个流项里的所有「项」追加进当前框（think 恒为项；文字在非结尾时为项）。 */
@@ -77,12 +162,10 @@ export function apply(ctx: any): void {
         push(f); continue
       }
       if (kind === 'assistant-step') {
-        const body = f.querySelector(BODY)
+        const body = bodyOf(f)
         if (body) {
           for (const c of Array.from(body.children)) {
-            // 跳过插件自己插入的标签/按钮，避免它们被当成框项（否则按钮会被标成 end，出现半个框）。
-            if (c.classList && (c.classList.contains(CLASS.toggle) || c.classList.contains(CLASS.label))) continue
-            if (c.getAttribute('data-variant') === 'think' || !endsHere) push(c)
+            if (isThinkBlock(c) || !endsHere) push(c)
           }
         }
         if (endsHere) current = null
@@ -93,10 +176,28 @@ export function apply(ctx: any): void {
     return boxes
   }
 
-  /** 应用单个框：折叠隐藏 / 框样式 / 缝隙 / 按钮。 */
-  function applyBox(box: Element[], seen: Set<Element>): void {
+  /** 撤掉某一轮的折叠开关行（官方按钮接管、或这一轮已经有行了）。 */
+  function removeRow(anchor: Element): void {
+    const row = rows.get(anchor)
+    if (row) { row.remove(); rows.delete(anchor) }
+  }
+
+  /** 开关行文案：与官方一致的措辞，没有工具调用时退化为「已思考」。 */
+  function rowText(toolCalls: number): string {
+    return toolCalls > 0 ? `${String(toolCalls)} 次工具调用` : '已思考'
+  }
+
+  /** 应用单个框：折叠隐藏 / 框样式 / 缝隙 / 开关行。 */
+  function applyBox(
+    box: Element[],
+    seen: Set<Element>,
+    withOfficial: Map<string, Element>,
+    toolCalls: Map<string, number>,
+    withRow: Set<string>,
+  ): void {
     const anchor = box[0].closest(FLOW) as Element
-    const isExpanded = expanded.has(anchor)
+    const key = keyOf(anchor)
+    const isExpanded = expandedTurns.has(key)
     const visible = isExpanded ? box : box.slice(-2)
 
     if (!isExpanded) {
@@ -106,39 +207,47 @@ export function apply(ctx: any): void {
     visible.forEach((el, k) => {
       const part = visible.length === 1 ? 'only' : k === 0 ? 'start' : k === visible.length - 1 ? 'end' : 'middle'
       el.setAttribute(ATTR.boxPart, part)
+      el.closest(FLOW)?.setAttribute(ATTR.flowShow, '1')
       if (k > 0) {
         const prev = visible[k - 1]
-        const gapOn = prev.closest(FLOW) === el.closest(FLOW) ? el : (el.closest(FLOW) as Element)
-        gapOn.setAttribute(ATTR.gap, '1')
+        const sameFlow = prev.closest(FLOW) === el.closest(FLOW)
+        const gapOn = sameFlow ? el : (el.closest(FLOW) as Element)
+        gapOn.setAttribute(ATTR.gap, sameFlow ? 'cancel' : 'zero')
       }
     })
 
-    const boxStart = visible[0]
-    const beforeEl = boxStart.closest(FLOW) as Element
-    let cap = labels.get(anchor)
-    if (!cap) {
-      cap = document.createElement('div')
-      cap.className = CLASS.label
-      cap.textContent = '执行过程'
-      labels.set(anchor, cap)
-    }
-    if (cap.parentNode !== beforeEl.parentNode || cap.nextSibling !== beforeEl) {
-      beforeEl.parentNode!.insertBefore(cap, beforeEl)
+    // 官方按钮在场 → 用它当这一轮的开关：撤掉本插件这一行，并把它的箭头方向对齐本插件状态
+    // （只写不读：本插件从不据此判断可见性）。
+    const official = withOfficial.get(key)
+    if (official) {
+      official.toggleAttribute(ATTR.open, isExpanded)
+      official.setAttribute('aria-expanded', String(isExpanded))
+      removeRow(anchor)
+      return
     }
 
-    const boxEnd = visible[visible.length - 1]
-    let btn = buttons.get(anchor)
-    if (!btn) {
-      btn = document.createElement('button')
-      btn.type = 'button'
-      btn.className = CLASS.toggle
-      btn.addEventListener('click', (e) => { e.stopPropagation(); toggle(anchor) })
-      buttons.set(anchor, btn)
+    // 一轮只出一个开关行：放在这一轮第一个过程框的上方，位置和官方按钮一致。
+    // 这一轮后续的过程框照常上框/折叠，只是不再插第二行。
+    if (withRow.has(key)) return
+    withRow.add(key)
+
+    const beforeEl = box[0].closest(FLOW) as Element
+    let row = rows.get(anchor)
+    if (!row) {
+      row = document.createElement('button')
+      row.type = 'button'
+      row.className = CLASS.row
+      row.innerHTML = `<span class="${CLASS.rowLabel}"></span><svg class="${CLASS.rowChevron}" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 6.25 8 9.75l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+      row.addEventListener('click', (e) => { e.stopPropagation(); toggle(anchor) })
+      rows.set(anchor, row)
     }
-    const label = isExpanded ? '折叠显示' : '展开过程'
-    if (btn.textContent !== label) btn.textContent = label
-    if (btn.parentNode !== boxEnd.parentNode || btn.previousSibling !== boxEnd) {
-      boxEnd.parentNode!.insertBefore(btn, boxEnd.nextSibling)
+    const labelEl = row.firstElementChild
+    const text = rowText(toolCalls.get(key) ?? 0)
+    if (labelEl && labelEl.textContent !== text) labelEl.textContent = text
+    row.toggleAttribute(ATTR.open, isExpanded)
+    row.setAttribute('aria-expanded', String(isExpanded))
+    if (row.parentNode !== beforeEl.parentNode || row.nextSibling !== beforeEl) {
+      beforeEl.parentNode!.insertBefore(row, beforeEl)
     }
     seen.add(anchor)
   }
@@ -146,7 +255,7 @@ export function apply(ctx: any): void {
   /** 所有子项都被折叠的 assistant-step 流项整体隐藏，避免留下空白。 */
   function hideEmptySteps(scope: Element): void {
     for (const f of scope.querySelectorAll(FLOW + '[data-chat-flow-kind="assistant-step"]')) {
-      const kids = Array.from(f.querySelector(BODY)?.children ?? [])
+      const kids = Array.from(bodyOf(f)?.children ?? [])
       if (kids.length > 0 && kids.every((c) => c.hasAttribute(ATTR.hidden))) {
         f.setAttribute(ATTR.hidden, '1')
       }
@@ -164,20 +273,30 @@ export function apply(ctx: any): void {
     if (document.querySelector('[data-question-key], [data-plan-review-key]')) return
     observer?.disconnect()
     try {
-      for (const el of root.querySelectorAll(`[${ATTR.hidden}], [${ATTR.boxPart}], [${ATTR.gap}]`)) {
+      for (const el of root.querySelectorAll(`[${ATTR.hidden}], [${ATTR.boxPart}], [${ATTR.gap}], [${ATTR.flowShow}]`)) {
         el.removeAttribute(ATTR.hidden)
         el.removeAttribute(ATTR.boxPart)
         el.removeAttribute(ATTR.gap)
+        el.removeAttribute(ATTR.flowShow)
+      }
+
+      const withOfficial = officialRows(root)
+      const boxes = collectBoxes(root)
+      // 开关行按整轮计数（一轮可能有多个过程框）。
+      const toolCalls = new Map<string, number>()
+      for (const box of boxes) {
+        const key = keyOf(box[0].closest(FLOW) as Element)
+        let count = toolCalls.get(key) ?? 0
+        for (const el of box) if (el.getAttribute('data-chat-flow-kind') === 'tool-call') count++
+        toolCalls.set(key, count)
       }
 
       const seen = new Set<Element>()
-      for (const box of collectBoxes(root)) applyBox(box, seen)
+      const withRow = new Set<string>()
+      for (const box of boxes) applyBox(box, seen, withOfficial, toolCalls, withRow)
 
-      for (const [anchor, btn] of Array.from(buttons)) {
-        if (!seen.has(anchor)) { btn.remove(); buttons.delete(anchor) }
-      }
-      for (const [anchor, cap] of Array.from(labels)) {
-        if (!seen.has(anchor)) { cap.remove(); labels.delete(anchor) }
+      for (const [anchor, row] of Array.from(rows)) {
+        if (!seen.has(anchor)) { row.remove(); rows.delete(anchor) }
       }
       hideEmptySteps(root)
     } catch (err) {
@@ -188,17 +307,54 @@ export function apply(ctx: any): void {
     }
   }
 
-  /** 点击按钮：切换状态 → 重排 → 锚定按钮视口位置补偿滚动（下方不动）。 */
-  function toggle(anchor: Element): void {
-    const btn = buttons.get(anchor)
-    const before = btn ? btn.getBoundingClientRect().top : null
-    if (expanded.has(anchor)) expanded.delete(anchor)
-    else expanded.add(anchor)
+  /** 切换某一轮：最新 2 项 ⇄ 全部过程。 */
+  function toggleTurn(turn: string | null): void {
+    if (turn === null) return
+    if (expandedTurns.has(turn)) expandedTurns.delete(turn)
+    else expandedTurns.add(turn)
     applyFold()
-    if (before !== null && btn) {
-      const delta = btn.getBoundingClientRect().top - before
+  }
+
+  /** 点击本插件自己的开关行：切换状态 → 重排 → 锚定行的视口位置补偿滚动（下方不动）。 */
+  function toggle(anchor: Element): void {
+    const row = rows.get(anchor)
+    const before = row ? row.getBoundingClientRect().top : null
+    toggleTurn(keyOf(anchor) || null)
+    if (before !== null && row && row.isConnected) {
+      const delta = row.getBoundingClientRect().top - before
       if (delta !== 0) scroller().scrollTop += delta
     }
+  }
+
+  /**
+   * 用户点击官方折叠按钮：这是插件与官方唯一的交互点。
+   * 不拦截事件 —— 官方自己也会切它的 open（它的箭头方向因此自动跟随），
+   * 本插件只翻自己的状态；可见性由本插件的属性 + CSS 盾决定，与官方写入顺序无关。
+   */
+  function onDocumentClick(event: MouseEvent): void {
+    const row = (event.target as Element | null)?.closest?.(OFFICIAL) as Element | null
+    if (!row) return
+    const before = row.getBoundingClientRect().top
+    toggleTurn(row.getAttribute('data-turn-process'))
+    // 官方的重渲染在本次事件之后落地，下一帧再补偿按钮的视口位置。
+    requestAnimationFrame(() => {
+      if (!row.isConnected) return
+      const delta = row.getBoundingClientRect().top - before
+      if (delta !== 0) scroller().scrollTop += delta
+    })
+  }
+
+  /**
+   * 浏览器查找（Ctrl+F）命中被官方折叠的内容时，官方会自己把这一轮展开；
+   * 跟随同一轮的展开态，避免"找到了却被本插件重新收成 2 项"。
+   */
+  function onBeforeMatch(event: Event): void {
+    const flow = (event.target as Element | null)?.closest?.(FLOW) as Element | null
+    if (!flow || !flow.hasAttribute('data-turn-process-member')) return
+    const turn = flow.getAttribute(TURN_ATTR)
+    if (turn === null || expandedTurns.has(turn)) return
+    expandedTurns.add(turn)
+    applyFold()
   }
 
   ctx.effect(() => {
@@ -212,6 +368,8 @@ export function apply(ctx: any): void {
     // 观察 body 才能在流容器出现后立刻触发 applyFold。
     observer = new MutationObserver(applyFold)
     observer.observe(document.body, { childList: true, subtree: true })
+    document.addEventListener('click', onDocumentClick, true)
+    document.addEventListener('beforematch', onBeforeMatch, true)
     applyFold()
 
     return () => {
@@ -219,15 +377,17 @@ export function apply(ctx: any): void {
       observer?.disconnect()
       observer = null
       root = null
-      document.querySelectorAll(`[${ATTR.hidden}], [${ATTR.boxPart}], [${ATTR.gap}]`).forEach((el) => {
+      document.removeEventListener('click', onDocumentClick, true)
+      document.removeEventListener('beforematch', onBeforeMatch, true)
+      document.querySelectorAll(`[${ATTR.hidden}], [${ATTR.boxPart}], [${ATTR.gap}], [${ATTR.flowShow}]`).forEach((el) => {
         el.removeAttribute(ATTR.hidden)
         el.removeAttribute(ATTR.boxPart)
         el.removeAttribute(ATTR.gap)
+        el.removeAttribute(ATTR.flowShow)
       })
-      for (const btn of buttons.values()) btn.remove()
-      buttons.clear()
-      for (const cap of labels.values()) cap.remove()
-      labels.clear()
+      for (const row of rows.values()) row.remove()
+      rows.clear()
+      expandedTurns.clear()
     }
   }, 'dsh-process-fold: box + fold + toggle')
 }
