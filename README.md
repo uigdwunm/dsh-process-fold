@@ -58,6 +58,8 @@ npm run build
 
 The browser source is in `src/client.ts`; the prebuilt DSH client bundle is committed at `lib/client.js`.
 
+Original requirements notes: [`docs/requirements.md`](docs/requirements.md).
+
 ## License
 
 MIT
