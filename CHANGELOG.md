@@ -1,12 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 - 2026-09-11
 
 - Cut process boxes at model text: every piece of assistant text closes the box in front of it and starts a new one after it, so a turn can hold several boxes.
 - Keep all model text outside the boxes (intermediate output was previously folded in); it now separates the boxes instead.
 - Neutralize the official `hidden="until-found"` on the flow items that hold model text, so the official collapse no longer swallows them.
 - Restore the flow gap the official `hidden` attribute removes above and after model text, including before the box that follows it.
-- Stack two lines above the top border of a collapsed box that hides items, so hidden calls are visible as a stack; clicking those lines expands the turn in place.
+- Stack two lines above the top border of a collapsed box that hides items, so hidden calls are visible as a stack; clicking those lines expands that box in place.
 - Key the expanded state per box instead of per turn: the stacked lines open only their own box, while the per-turn row (or the official button) still opens or closes every box of that turn.
 - Make the top border the collapse control for an expanded box: hovering the top edge fades in a miniature of the stacked lines (about 52px wide, centred) on the line, and clicking it folds that one box back in place.
 - Fix the stacked lines hiding the box's own top border: absolute pseudo-elements are positioned from the padding box, so the lower line sat 1px too low and painted over that border.

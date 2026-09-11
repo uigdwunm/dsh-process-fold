@@ -1,6 +1,6 @@
 {
   "name": "dsh-process-fold",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Fold each DSH Web turn's thinking, tool calls and context into compact expandable process boxes cut at every piece of model text, and reuse the shipped turn-process disclosure row as the toggle whenever it exists.",
   "keywords": [
     "deepseek-harness",
@@ -47,8 +47,8 @@
     "catalog": {
       "category": "ui",
       "summary": {
-        "en": "Folds each DSH Web turn's thinking, tool calls and context into bordered process boxes cut at every piece of model text, showing each box's latest two items collapsed and reusing the shipped turn-process row as the toggle when present.",
-        "zh": "把 DSH Web 每轮的思考、工具调用与上下文折叠进带边框的过程框，在每段模型文本处切开，折叠时每个框只显示最新两项；官方「过程折叠」按钮在场时直接复用它作为开关。"
+        "en": "Folds each DSH Web turn's thinking, tool calls and context into bordered process boxes cut at every piece of model text; each box shows its latest two items, with a clickable stack above its border to open it and the border itself to fold it back.",
+        "zh": "把 DSH Web 每轮的思考、工具调用与上下文折叠进带边框的过程框，在每段模型文本处切开；每个框只显示最新两项，上边框的堆叠线可点击展开、再点边框收起。"
       },
       "capabilities": [
         "client-ui"
