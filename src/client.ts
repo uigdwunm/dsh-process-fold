@@ -27,7 +27,7 @@ interface TurnBoxes {
  * 折叠时确实藏了项（框内多于 2 项）的框，会在上边线之上再堆叠两条线，提示"里面还有东西"；
  * 那两条线可点击，点击即展开**它所属的那一个框**（点击带 = 上边线以上，点方框本体仍是原本的交互）。
  * 展开后同一条上边线反过来就是收回控件：鼠标移到框的上边缘时，线中间浮出那两条堆叠线的缩小版
- * （约 26px 宽、居中）当图标，点这条带即只收回这一个框。展开状态因此按「框」存，一轮里的多个框互不影响。
+ * （约 52px 宽、居中）当图标，点这条带即只收回这一个框。展开状态因此按「框」存，一轮里的多个框互不影响。
  *
  * 折叠开关长得和官方「过程折叠」按钮一样（一行摘要 + 右侧箭头），放在过程区上方：
  * - 官方按钮在场时，撤掉本插件这一行，直接用它当开关，并把它的箭头方向对齐本插件状态；
@@ -134,7 +134,7 @@ export function apply(ctx: any): void {
     [${ATTR.stack}]::before { top: -11px; left: 16px; right: 16px; height: 6px; }
     [${ATTR.stack}]::after { top: -6px; left: 8px; right: 8px; height: 6px; }
     /* 展开后：上边线变成收回控件。鼠标移到框的上边缘时，线中间浮出"堆叠线的小号版"当图标
-       —— 就是上面那两条线的缩小版（总宽 26px、居中、越靠上越窄），点这条带即只收回这一个框。
+       —— 就是上面那两条线的缩小版（总宽 52px、居中、越靠上越窄），点这条带即只收回这一个框。
        和折叠态占同一块地方、同一套描边与底色，视觉上完全连贯。 */
     [${ATTR.merge}] { position: relative; }
     [${ATTR.merge}]::before,
@@ -143,8 +143,8 @@ export function apply(ctx: any): void {
       border: 1px solid ${BORDER}; border-bottom: none; background: ${BG}; border-radius: 8px 8px 0 0;
       opacity: 0; transition: opacity .1s; pointer-events: auto; cursor: pointer;
     }
-    [${ATTR.merge}]::before { top: -11px; width: 20px; height: 6px; margin-left: -10px; }
-    [${ATTR.merge}]::after { top: -6px; width: 26px; height: 6px; margin-left: -13px; }
+    [${ATTR.merge}]::before { top: -11px; width: 40px; height: 6px; margin-left: -20px; }
+    [${ATTR.merge}]::after { top: -6px; width: 52px; height: 6px; margin-left: -26px; }
     [${ATTR.merge}]:hover::before, [${ATTR.merge}]:hover::after { opacity: 1; }
     @media (prefers-reduced-motion: reduce) { [${ATTR.merge}]::before, [${ATTR.merge}]::after { transition: none; } }
     [${ATTR.hidden}] { display: none !important; }
