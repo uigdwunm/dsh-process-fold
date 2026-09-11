@@ -124,18 +124,20 @@ export function apply(ctx: any): void {
     [${ATTR.gap}="zero"] { margin-top: 0 !important; }
     [${ATTR.gap}="text"] { margin-top: var(--dsh-chat-flow-gap, 16px) !important; }
     /* 折叠时藏了项的框：在框的上边线之上再堆叠两条线（越靠上越窄，像叠起来的几张纸），
-       提示"里面还有东西"。两条线只是伪元素，不占布局；它们画在上边线以上，可命中、可点击。 */
+       提示"里面还有东西"。两条线只是伪元素，不占布局；它们画在上边线以上，可命中、可点击。
+       注意：绝对定位的伪元素以**内边距盒**为基准，比边框盒低 1px（= 上边框宽度），
+       所以每条的 top 都要多减 1px，否则 ::after 的下沿会盖掉框自己的上边线（最上层那张纸的线）。 */
     [${ATTR.stack}] { position: relative; }
     [${ATTR.stack}]::before,
     [${ATTR.stack}]::after {
       content: ""; position: absolute; box-sizing: border-box; pointer-events: auto; cursor: pointer;
       border: 1px solid ${BORDER}; border-bottom: none; background: ${BG}; border-radius: 8px 8px 0 0;
     }
-    [${ATTR.stack}]::before { top: -11px; left: 16px; right: 16px; height: 6px; }
-    [${ATTR.stack}]::after { top: -6px; left: 8px; right: 8px; height: 6px; }
+    [${ATTR.stack}]::before { top: -12px; left: 16px; right: 16px; height: 6px; }
+    [${ATTR.stack}]::after { top: -7px; left: 8px; right: 8px; height: 6px; }
     /* 展开后：上边线变成收回控件。鼠标移到框的上边缘时，线中间浮出"堆叠线的小号版"当图标
        —— 就是上面那两条线的缩小版（总宽 52px、居中、越靠上越窄），点这条带即只收回这一个框。
-       和折叠态占同一块地方、同一套描边与底色，视觉上完全连贯。 */
+       和折叠态占同一块地方、同一套描边与底色，top 同样按内边距盒多减 1px，不盖住上边线。 */
     [${ATTR.merge}] { position: relative; }
     [${ATTR.merge}]::before,
     [${ATTR.merge}]::after {
@@ -143,8 +145,8 @@ export function apply(ctx: any): void {
       border: 1px solid ${BORDER}; border-bottom: none; background: ${BG}; border-radius: 8px 8px 0 0;
       opacity: 0; transition: opacity .1s; pointer-events: auto; cursor: pointer;
     }
-    [${ATTR.merge}]::before { top: -11px; width: 40px; height: 6px; margin-left: -20px; }
-    [${ATTR.merge}]::after { top: -6px; width: 52px; height: 6px; margin-left: -26px; }
+    [${ATTR.merge}]::before { top: -12px; width: 40px; height: 6px; margin-left: -20px; }
+    [${ATTR.merge}]::after { top: -7px; width: 52px; height: 6px; margin-left: -26px; }
     [${ATTR.merge}]:hover::before, [${ATTR.merge}]:hover::after { opacity: 1; }
     @media (prefers-reduced-motion: reduce) { [${ATTR.merge}]::before, [${ATTR.merge}]::after { transition: none; } }
     [${ATTR.hidden}] { display: none !important; }
