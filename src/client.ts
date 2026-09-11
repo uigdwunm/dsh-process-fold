@@ -18,6 +18,9 @@ interface ProcessBox {
  * 这段文本之前的框就至此完结 —— 文本本身不进框，它是框与框之间的间隔；
  * 文本之后再出现的思考过程另起一框，绝不与上面的框合并。一轮里因此可能有多个框。
  *
+ * 折叠时确实藏了项（框内多于 2 项）的框，会在上边线之上再堆叠两条线，提示"里面还有东西"；
+ * 那两条线可点击，点击即展开该轮（点击带 = 上边线以上，点方框本体仍是原本的交互）。
+ *
  * 折叠开关长得和官方「过程折叠」按钮一样（一行摘要 + 右侧箭头），放在过程区上方：
  * - 官方按钮在场时，撤掉本插件这一行，直接用它当开关，并把它的箭头方向对齐本插件状态；
  * - 官方按钮不在时（流式输出中、更早历史未加载完、官方设为标准显示、被中断或没有最终文字回答的轮次 …），
@@ -43,6 +46,11 @@ export function apply(ctx: any): void {
     flowShow: 'data-fold-flow-show',
     /** 含模型文本的流项：必须始终可见（官方折叠时也要豁免），并承担框间间隔的流间距。 */
     textFlow: 'data-fold-text-flow',
+    /**
+     * 折叠时确实藏了项的框：在框的上边线之上堆叠两条线，提示"里面还有东西"。
+     * 标记挂在框的第一个可见项上；那两条线本身可点击（点击带 = 上边线以上），点击即展开。
+     */
+    stack: 'data-fold-stack',
     open: 'data-open',
   } as const
   const CLASS = { row: 'dsh-fold-row', rowLabel: 'dsh-fold-row-label', rowChevron: 'dsh-fold-row-chevron' } as const
@@ -102,6 +110,16 @@ export function apply(ctx: any): void {
     [${ATTR.gap}="cancel"] { margin-top: -16px !important; }
     [${ATTR.gap}="zero"] { margin-top: 0 !important; }
     [${ATTR.gap}="text"] { margin-top: var(--dsh-chat-flow-gap, 16px) !important; }
+    /* 折叠时藏了项的框：在框的上边线之上再堆叠两条线（越靠上越窄，像叠起来的几张纸），
+       提示"里面还有东西"。两条线只是伪元素，不占布局；它们画在上边线以上，可命中、可点击。 */
+    [${ATTR.stack}] { position: relative; }
+    [${ATTR.stack}]::before,
+    [${ATTR.stack}]::after {
+      content: ""; position: absolute; box-sizing: border-box; pointer-events: auto; cursor: pointer;
+      border: 1px solid ${BORDER}; border-bottom: none; background: ${BG}; border-radius: 8px 8px 0 0;
+    }
+    [${ATTR.stack}]::before { top: -11px; left: 16px; right: 16px; height: 6px; }
+    [${ATTR.stack}]::after { top: -6px; left: 8px; right: 8px; height: 6px; }
     [${ATTR.hidden}] { display: none !important; }
     /* 折叠开关：与官方 TurnProcessNodeView 同一套尺寸与 token，官方按钮不在时顶替它。 */
     .${CLASS.row} { box-sizing: border-box; display: flex; align-items: center; width: 100%; min-width: 0; height: 33px; padding: 0 0 8px; border: none; border-bottom: .5px solid var(--dsw-alias-border-l2); background: none; color: var(--dsw-alias-label-secondary); font-size: 14px; line-height: 24px; text-align: left; cursor: pointer; }
@@ -253,6 +271,8 @@ export function apply(ctx: any): void {
         // 若该流项已经是上一个框的延续（gap=zero），保持无缝，不覆盖。
         flow.setAttribute(ATTR.gap, 'text')
       }
+      // 折叠且确实藏了项（>2 项）→ 给第一个可见项挂堆叠线标记。
+      if (!isExpanded && k === 0 && items.length > 2) el.setAttribute(ATTR.stack, '1')
     })
 
     // 官方按钮在场 → 用它当这一轮的开关：撤掉本插件这一行，并把它的箭头方向对齐本插件状态
@@ -312,12 +332,13 @@ export function apply(ctx: any): void {
     if (document.querySelector('[data-question-key], [data-plan-review-key]')) return
     observer?.disconnect()
     try {
-      for (const el of root.querySelectorAll(`[${ATTR.hidden}], [${ATTR.boxPart}], [${ATTR.gap}], [${ATTR.flowShow}], [${ATTR.textFlow}]`)) {
+      for (const el of root.querySelectorAll(`[${ATTR.hidden}], [${ATTR.boxPart}], [${ATTR.gap}], [${ATTR.flowShow}], [${ATTR.textFlow}], [${ATTR.stack}]`)) {
         el.removeAttribute(ATTR.hidden)
         el.removeAttribute(ATTR.boxPart)
         el.removeAttribute(ATTR.gap)
         el.removeAttribute(ATTR.flowShow)
         el.removeAttribute(ATTR.textFlow)
+        el.removeAttribute(ATTR.stack)
       }
 
       const withOfficial = officialRows(root)
@@ -369,12 +390,34 @@ export function apply(ctx: any): void {
   }
 
   /**
+   * 展开某一轮。堆叠线画在「隐藏内容的起点」上，所以这里不做滚动补偿：
+   * 直接让藏起来的项在原处长出来，用户点的那个位置就是新内容的开头。
+   */
+  function expandTurn(anchor: Element): void {
+    const flow = anchor.closest(FLOW)
+    if (flow === null) return
+    const key = keyOf(flow)
+    if (expandedTurns.has(key)) return
+    expandedTurns.add(key)
+    applyFold()
+  }
+
+  /**
    * 用户点击官方折叠按钮：这是插件与官方唯一的交互点。
    * 不拦截事件 —— 官方自己也会切它的 open（它的箭头方向因此自动跟随），
    * 本插件只翻自己的状态；可见性由本插件的属性 + CSS 盾决定，与官方写入顺序无关。
    */
   function onDocumentClick(event: MouseEvent): void {
-    const row = (event.target as Element | null)?.closest?.(OFFICIAL) as Element | null
+    const target = event.target as Element | null
+    // 堆叠线画在方框上边线之上：点击落在上边线以上才算点线（点方框本体保持原有行为）。
+    const stack = target?.closest?.(`[${ATTR.stack}]`) as Element | null
+    if (stack !== null && event.clientY < stack.getBoundingClientRect().top) {
+      event.stopPropagation()
+      event.preventDefault()
+      expandTurn(stack)
+      return
+    }
+    const row = target?.closest?.(OFFICIAL) as Element | null
     if (!row) return
     const before = row.getBoundingClientRect().top
     toggleTurn(row.getAttribute('data-turn-process'))
@@ -421,12 +464,13 @@ export function apply(ctx: any): void {
       root = null
       document.removeEventListener('click', onDocumentClick, true)
       document.removeEventListener('beforematch', onBeforeMatch, true)
-      document.querySelectorAll(`[${ATTR.hidden}], [${ATTR.boxPart}], [${ATTR.gap}], [${ATTR.flowShow}], [${ATTR.textFlow}]`).forEach((el) => {
+      document.querySelectorAll(`[${ATTR.hidden}], [${ATTR.boxPart}], [${ATTR.gap}], [${ATTR.flowShow}], [${ATTR.textFlow}], [${ATTR.stack}]`).forEach((el) => {
         el.removeAttribute(ATTR.hidden)
         el.removeAttribute(ATTR.boxPart)
         el.removeAttribute(ATTR.gap)
         el.removeAttribute(ATTR.flowShow)
         el.removeAttribute(ATTR.textFlow)
+        el.removeAttribute(ATTR.stack)
       })
       for (const row of rows.values()) row.remove()
       rows.clear()

@@ -6,6 +6,7 @@
 - Keep all model text outside the boxes (intermediate output was previously folded in); it now separates the boxes instead.
 - Neutralize the official `hidden="until-found"` on the flow items that hold model text, so the official collapse no longer swallows them.
 - Restore the flow gap the official `hidden` attribute removes above and after model text, including before the box that follows it.
+- Stack two lines above the top border of a collapsed box that hides items, so hidden calls are visible as a stack; clicking those lines expands the turn in place.
 
 ## 0.2.1 - 2026-09-10
 
