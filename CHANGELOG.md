@@ -7,6 +7,7 @@
 - Neutralize the official `hidden="until-found"` on the flow items that hold model text, so the official collapse no longer swallows them.
 - Restore the flow gap the official `hidden` attribute removes above and after model text, including before the box that follows it.
 - Stack two lines above the top border of a collapsed box that hides items, so hidden calls are visible as a stack; clicking those lines expands the turn in place.
+- Key the expanded state per box instead of per turn: the stacked lines open only their own box, while the per-turn row (or the official button) still opens or closes every box of that turn.
 
 ## 0.2.1 - 2026-09-10
 

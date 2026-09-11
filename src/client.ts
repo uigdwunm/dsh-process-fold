@@ -10,6 +10,12 @@ interface ProcessBox {
   afterText: boolean
 }
 
+/** 一轮里的全部框：框键（展开状态的键）与该轮的工具调用数（开关行文案）。 */
+interface TurnBoxes {
+  keys: string[]
+  toolCalls: number
+}
+
 /**
  * 把每轮的执行过程（思考 / 工具调用 / 上下文注入 …）按「模型文本」切成一串方框：
  * 每个框内默认只显示最新 2 项，展开时显示全部；模型文本、用户消息、提问交互始终留在框外完整显示。
@@ -19,12 +25,13 @@ interface ProcessBox {
  * 文本之后再出现的思考过程另起一框，绝不与上面的框合并。一轮里因此可能有多个框。
  *
  * 折叠时确实藏了项（框内多于 2 项）的框，会在上边线之上再堆叠两条线，提示"里面还有东西"；
- * 那两条线可点击，点击即展开该轮（点击带 = 上边线以上，点方框本体仍是原本的交互）。
+ * 那两条线可点击，点击即展开**它所属的那一个框**（点击带 = 上边线以上，点方框本体仍是原本的交互）。
+ * 展开状态因此按「框」存，一轮里的多个框互不影响。
  *
  * 折叠开关长得和官方「过程折叠」按钮一样（一行摘要 + 右侧箭头），放在过程区上方：
  * - 官方按钮在场时，撤掉本插件这一行，直接用它当开关，并把它的箭头方向对齐本插件状态；
  * - 官方按钮不在时（流式输出中、更早历史未加载完、官方设为标准显示、被中断或没有最终文字回答的轮次 …），
- *   本插件这一行代替它显示，行为完全一致；一轮只出一个（一轮里的多个过程框一起折叠/展开）。
+ *   本插件这一行代替它显示，行为完全一致；一轮只出一个，**管这一轮的全部框**（没全开就全开，全开就全收）。
  * - 本插件**不读取**官方按钮的 open / aria-expanded / data-* 状态。官方折叠时会给过程成员挂
  *   `hidden="until-found"`，本插件只用 css 里的一条规则把它对「本插件要显示的项」失效掉，
  *   所以无论官方状态如何，框内可见性始终由本插件自己的状态决定。
@@ -131,10 +138,16 @@ export function apply(ctx: any): void {
   `
 
   // —— 状态 ——
-  /** 展开状态按轮次存（官方按钮给的就是轮次号）；元素引用会在 React 重渲染时失效，不能当键。 */
-  const expandedTurns = new Set<string>()
+  /**
+   * 展开状态按**框**存（不是按轮），元素引用会在 React 重渲染时失效，所以键由 boxKey 生成：
+   * 「框首项所在流项的 key + 它在正文里的位置」。
+   * 每轮的开关行 / 官方按钮管整轮：这一轮的框全开时它才显示为展开态。
+   */
+  const expandedBoxes = new Set<string>()
   /** 每轮一个折叠开关行，键是这一轮第一个过程框的流项。 */
   const rows = new Map<Element, HTMLButtonElement>()
+  /** 最近一次 applyFold 算出的「轮 → 该轮的框」，供开关行、查找跟随和官方按钮状态使用。 */
+  let turnBoxes = new Map<string, TurnBoxes>()
   let root: Element | null = null
   let observer: MutationObserver | null = null
 
@@ -165,6 +178,20 @@ export function apply(ctx: any): void {
       el.hasAttribute('data-turn-process-inline') ||
       el.firstElementChild?.getAttribute('data-variant') === 'think'
     )
+  }
+
+  /**
+   * 框的稳定键（展开状态按框存）。元素引用会在 React 重渲染时失效，所以用
+   * 「框首项所在流项的 key + 它在正文里的位置」：同一个正文里被文本切开的多个框靠位置区分。
+   */
+  function boxKey(box: ProcessBox): string {
+    const first = box.items[0]
+    const flow = first.closest(FLOW)
+    if (flow === null) return ''
+    const base = flow.getAttribute(FLOW_KEY_ATTR) ?? flow.getAttribute(TURN_ATTR) ?? ''
+    const body = flow.getAttribute('data-chat-flow-kind') === 'assistant-step' ? bodyOf(flow) : null
+    const index = body !== null && first.parentElement === body ? Array.prototype.indexOf.call(body.children, first) : 0
+    return `${base}#${String(index)}`
   }
 
   /** 当前在场的官方折叠按钮：轮次 → 按钮元素（每轮 applyFold 只查一次 DOM）。 */
@@ -243,13 +270,16 @@ export function apply(ctx: any): void {
     box: ProcessBox,
     seen: Set<Element>,
     withOfficial: Map<string, Element>,
-    toolCalls: Map<string, number>,
     withRow: Set<string>,
   ): void {
     const items = box.items
     const anchor = items[0].closest(FLOW) as Element
-    const key = keyOf(anchor)
-    const isExpanded = expandedTurns.has(key)
+    const turn = keyOf(anchor)
+    const entry = turnBoxes.get(turn)
+    const key = boxKey(box)
+    const isExpanded = expandedBoxes.has(key)
+    // 开关行 / 官方按钮管整轮：这一轮的框全开时才显示为展开态。
+    const allOpen = entry !== undefined && entry.keys.length > 0 && entry.keys.every((k) => expandedBoxes.has(k))
     const visible = isExpanded ? items : items.slice(-2)
 
     if (!isExpanded) {
@@ -271,24 +301,24 @@ export function apply(ctx: any): void {
         // 若该流项已经是上一个框的延续（gap=zero），保持无缝，不覆盖。
         flow.setAttribute(ATTR.gap, 'text')
       }
-      // 折叠且确实藏了项（>2 项）→ 给第一个可见项挂堆叠线标记。
-      if (!isExpanded && k === 0 && items.length > 2) el.setAttribute(ATTR.stack, '1')
+      // 折叠且确实藏了项（>2 项）→ 给第一个可见项挂堆叠线标记，值就是这个框的键（点击只展开它）。
+      if (!isExpanded && k === 0 && items.length > 2) el.setAttribute(ATTR.stack, key)
     })
 
     // 官方按钮在场 → 用它当这一轮的开关：撤掉本插件这一行，并把它的箭头方向对齐本插件状态
     // （只写不读：本插件从不据此判断可见性）。
-    const official = withOfficial.get(key)
+    const official = withOfficial.get(turn)
     if (official) {
-      official.toggleAttribute(ATTR.open, isExpanded)
-      official.setAttribute('aria-expanded', String(isExpanded))
+      official.toggleAttribute(ATTR.open, allOpen)
+      official.setAttribute('aria-expanded', String(allOpen))
       removeRow(anchor)
       return
     }
 
     // 一轮只出一个开关行：放在这一轮第一个过程框的上方，位置和官方按钮一致。
     // 这一轮后续的过程框照常上框/折叠，只是不再插第二行。
-    if (withRow.has(key)) return
-    withRow.add(key)
+    if (withRow.has(turn)) return
+    withRow.add(turn)
 
     const beforeEl = items[0].closest(FLOW) as Element
     let row = rows.get(anchor)
@@ -301,10 +331,10 @@ export function apply(ctx: any): void {
       rows.set(anchor, row)
     }
     const labelEl = row.firstElementChild
-    const text = rowText(toolCalls.get(key) ?? 0)
+    const text = rowText(entry?.toolCalls ?? 0)
     if (labelEl && labelEl.textContent !== text) labelEl.textContent = text
-    row.toggleAttribute(ATTR.open, isExpanded)
-    row.setAttribute('aria-expanded', String(isExpanded))
+    row.toggleAttribute(ATTR.open, allOpen)
+    row.setAttribute('aria-expanded', String(allOpen))
     if (row.parentNode !== beforeEl.parentNode || row.nextSibling !== beforeEl) {
       beforeEl.parentNode!.insertBefore(row, beforeEl)
     }
@@ -345,18 +375,19 @@ export function apply(ctx: any): void {
       const { boxes, textFlows } = collectBoxes(root)
       // 模型文本永远可见：官方折叠会把它所在的整个流项藏掉，这里连同流间距一起豁免。
       for (const flow of textFlows) flow.setAttribute(ATTR.textFlow, '1')
-      // 开关行按整轮计数（一轮可能有多个过程框）。
-      const toolCalls = new Map<string, number>()
+      // 按轮汇总：开关行文案用整轮的工具调用数，开关行的展开态用整轮的框是否全开。
+      turnBoxes = new Map<string, TurnBoxes>()
       for (const box of boxes) {
-        const key = keyOf(box.items[0].closest(FLOW) as Element)
-        let count = toolCalls.get(key) ?? 0
-        for (const el of box.items) if (el.getAttribute('data-chat-flow-kind') === 'tool-call') count++
-        toolCalls.set(key, count)
+        const turn = keyOf(box.items[0].closest(FLOW) as Element)
+        const entry = turnBoxes.get(turn) ?? { keys: [], toolCalls: 0 }
+        entry.keys.push(boxKey(box))
+        for (const el of box.items) if (el.getAttribute('data-chat-flow-kind') === 'tool-call') entry.toolCalls++
+        turnBoxes.set(turn, entry)
       }
 
       const seen = new Set<Element>()
       const withRow = new Set<string>()
-      for (const box of boxes) applyBox(box, seen, withOfficial, toolCalls, withRow)
+      for (const box of boxes) applyBox(box, seen, withOfficial, withRow)
 
       for (const [anchor, row] of Array.from(rows)) {
         if (!seen.has(anchor)) { row.remove(); rows.delete(anchor) }
@@ -370,11 +401,16 @@ export function apply(ctx: any): void {
     }
   }
 
-  /** 切换某一轮：最新 2 项 ⇄ 全部过程。 */
+  /** 切换某一轮的全部框：没全开就全开，全开就全收。 */
   function toggleTurn(turn: string | null): void {
     if (turn === null) return
-    if (expandedTurns.has(turn)) expandedTurns.delete(turn)
-    else expandedTurns.add(turn)
+    const entry = turnBoxes.get(turn)
+    if (entry === undefined) return
+    const allOpen = entry.keys.every((key) => expandedBoxes.has(key))
+    for (const key of entry.keys) {
+      if (allOpen) expandedBoxes.delete(key)
+      else expandedBoxes.add(key)
+    }
     applyFold()
   }
 
@@ -390,15 +426,12 @@ export function apply(ctx: any): void {
   }
 
   /**
-   * 展开某一轮。堆叠线画在「隐藏内容的起点」上，所以这里不做滚动补偿：
+   * 展开**单个**框（堆叠线点击）。堆叠线画在「隐藏内容的起点」上，所以这里不做滚动补偿：
    * 直接让藏起来的项在原处长出来，用户点的那个位置就是新内容的开头。
    */
-  function expandTurn(anchor: Element): void {
-    const flow = anchor.closest(FLOW)
-    if (flow === null) return
-    const key = keyOf(flow)
-    if (expandedTurns.has(key)) return
-    expandedTurns.add(key)
+  function expandBox(key: string | null): void {
+    if (key === null || key === '' || expandedBoxes.has(key)) return
+    expandedBoxes.add(key)
     applyFold()
   }
 
@@ -414,7 +447,7 @@ export function apply(ctx: any): void {
     if (stack !== null && event.clientY < stack.getBoundingClientRect().top) {
       event.stopPropagation()
       event.preventDefault()
-      expandTurn(stack)
+      expandBox(stack.getAttribute(ATTR.stack))
       return
     }
     const row = target?.closest?.(OFFICIAL) as Element | null
@@ -437,8 +470,10 @@ export function apply(ctx: any): void {
     const flow = (event.target as Element | null)?.closest?.(FLOW) as Element | null
     if (!flow || !flow.hasAttribute('data-turn-process-member')) return
     const turn = flow.getAttribute(TURN_ATTR)
-    if (turn === null || expandedTurns.has(turn)) return
-    expandedTurns.add(turn)
+    if (turn === null) return
+    const entry = turnBoxes.get(turn)
+    if (entry === undefined || entry.keys.every((key) => expandedBoxes.has(key))) return
+    for (const key of entry.keys) expandedBoxes.add(key)
     applyFold()
   }
 
@@ -474,7 +509,8 @@ export function apply(ctx: any): void {
       })
       for (const row of rows.values()) row.remove()
       rows.clear()
-      expandedTurns.clear()
+      expandedBoxes.clear()
+      turnBoxes = new Map()
     }
   }, 'dsh-process-fold: box + fold + toggle')
 }
