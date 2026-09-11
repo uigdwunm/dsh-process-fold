@@ -4,9 +4,19 @@ export const name = 'dsh-process-fold-client'
 /** 无硬依赖服务：只注入样式 + 折叠逻辑。 */
 export const inject: string[] = []
 
+/** 一个过程框：成员项，以及它是否紧跟在一次模型文本之后开始（此时需要自己补一份上间距）。 */
+interface ProcessBox {
+  items: Element[]
+  afterText: boolean
+}
+
 /**
- * 把每轮的执行过程（思考 / 工具调用 / 上下文注入 …）套进一个方框：框内默认只显示最新 2 项，
- * 展开时显示全部；最终文字回答、用户消息、提问交互始终留在框外完整显示。
+ * 把每轮的执行过程（思考 / 工具调用 / 上下文注入 …）按「模型文本」切成一串方框：
+ * 每个框内默认只显示最新 2 项，展开时显示全部；模型文本、用户消息、提问交互始终留在框外完整显示。
+ *
+ * 框的收口边界是**模型文本**：assistant-step 正文里一旦出现非思考内容（文字、图片、中断提示 …），
+ * 这段文本之前的框就至此完结 —— 文本本身不进框，它是框与框之间的间隔；
+ * 文本之后再出现的思考过程另起一框，绝不与上面的框合并。一轮里因此可能有多个框。
  *
  * 折叠开关长得和官方「过程折叠」按钮一样（一行摘要 + 右侧箭头），放在过程区上方：
  * - 官方按钮在场时，撤掉本插件这一行，直接用它当开关，并把它的箭头方向对齐本插件状态；
@@ -31,6 +41,8 @@ export function apply(ctx: any): void {
      * 由同一条 CSS 盾在流项层面失效官方的隐藏。
      */
     flowShow: 'data-fold-flow-show',
+    /** 含模型文本的流项：必须始终可见（官方折叠时也要豁免），并承担框间间隔的流间距。 */
+    textFlow: 'data-fold-text-flow',
     open: 'data-open',
   } as const
   const CLASS = { row: 'dsh-fold-row', rowLabel: 'dsh-fold-row-label', rowChevron: 'dsh-fold-row-chevron' } as const
@@ -73,14 +85,23 @@ export function apply(ctx: any): void {
     [${ATTR.boxPart}="end"] { border-top: none; border-radius: 0 0 8px 8px; }
     [${ATTR.boxPart}="only"] { border-radius: 8px; }
     /* 官方折叠时会把自己隐藏的成员挂上 hidden="until-found"；对本插件要显示的项失效掉。
-       流项层面一份（官方藏的是整个流项），内联块层面一份（官方藏的是 answer step 里的内联思考）。 */
+       流项层面一份（官方藏的是整个流项），内联块层面一份（官方藏的是 answer step 里的内联思考）；
+       含模型文本的流项单独一份：文本不进框，但同样要豁免官方的整项隐藏。 */
     [${ATTR.flowShow}][hidden="until-found"],
+    [${ATTR.textFlow}][hidden="until-found"],
     [${ATTR.boxPart}][hidden="until-found"] { content-visibility: visible !important; }
     /* 同行内联思考被官方按"已隐藏"压缩了底部间距，本插件把它显示出来时要还回来。 */
     [${ATTR.boxPart}][data-turn-process-inline][hidden] { margin-bottom: 0 !important; }
-    /* 同一正文容器内：间距来自 flex gap → 负 margin 抵消；跨流项：间距来自官方列的 margin-top → 归零。 */
+    /* 文本是框与框之间的间隔：官方折叠时 [hidden] 会让官方列的 margin-top 规则失效，
+       这里把文本流项、以及紧随其后的流项各补回一份正常流间距。
+       必须排在下面的 gap 规则之前：框内相邻项的 0 间距要能覆盖它。 */
+    [${ATTR.textFlow}] { margin-top: var(--dsh-chat-flow-gap, 16px) !important; }
+    [${ATTR.textFlow}] + * { margin-top: var(--dsh-chat-flow-gap, 16px) !important; }
+    /* 同一正文容器内：间距来自 flex gap → 负 margin 抵消；跨流项：间距来自官方列的 margin-top → 归零；
+       紧跟在模型文本之后的框：官方折叠时同样丢掉了这份间距，这里补回来。 */
     [${ATTR.gap}="cancel"] { margin-top: -16px !important; }
     [${ATTR.gap}="zero"] { margin-top: 0 !important; }
+    [${ATTR.gap}="text"] { margin-top: var(--dsh-chat-flow-gap, 16px) !important; }
     [${ATTR.hidden}] { display: none !important; }
     /* 折叠开关：与官方 TurnProcessNodeView 同一套尺寸与 token，官方按钮不在时顶替它。 */
     .${CLASS.row} { box-sizing: border-box; display: flex; align-items: center; width: 100%; min-width: 0; height: 33px; padding: 0 0 8px; border: none; border-bottom: .5px solid var(--dsw-alias-border-l2); background: none; color: var(--dsw-alias-label-secondary); font-size: 14px; line-height: 24px; text-align: left; cursor: pointer; }
@@ -138,42 +159,54 @@ export function apply(ctx: any): void {
     return found
   }
 
-  /** 把一个流项里的所有「项」追加进当前框（think 恒为项；文字在非结尾时为项）。 */
-  function collectBoxes(scope: Element): Element[][] {
+  /**
+   * 收集所有过程框，以及承载模型文本的流项。
+   *
+   * 框的收口边界就是**模型文本**：assistant-step 正文里一旦出现非思考内容（文字、图片、中断提示 …），
+   * 当前框就到此为止 —— 这段内容本身不进框，它是框与框之间的间隔；
+   * 文本之后新出现的思考过程另起一框，绝不与上面的框合并。
+   * 也就是说：模型每输出一次文本，这段文本之前的框就至此完结。
+   *
+   * 官方定义的轮次边界（`BOUNDARY`）同样收口；`ask_user_question` 交互工具调用单独收口，
+   * 保证用户始终能看到并作答。
+   */
+  function collectBoxes(scope: Element): { boxes: ProcessBox[]; textFlows: Set<Element> } {
     const flows = scope.querySelectorAll(FLOW)
-    const boxes: Element[][] = []
-    let current: Element[] | null = null
+    const boxes: ProcessBox[] = []
+    const textFlows = new Set<Element>()
+    /** 当前框是否紧跟在一次模型文本之后开始；官方折叠时那份流间距要由本插件补回来。 */
+    let afterText = false
+    let current: ProcessBox | null = null
     const push = (el: Element): void => {
-      if (!current) { current = []; boxes.push(current) }
-      current.push(el)
+      if (!current) { current = { items: [], afterText }; boxes.push(current) }
+      current.items.push(el)
     }
 
-    for (let i = 0; i < flows.length; i++) {
-      const f = flows[i]
+    for (const f of Array.from(flows)) {
       const kind = f.getAttribute('data-chat-flow-kind')
-      const nextKind = flows[i + 1]?.getAttribute('data-chat-flow-kind') ?? null
-      const endsHere = nextKind === null || BOUNDARY.has(nextKind)
-
-      if (kind === null) { current = null; continue }
-      if (BOUNDARY.has(kind)) { current = null; continue }
+      if (kind === null || BOUNDARY.has(kind)) { current = null; afterText = false; continue }
       if (PROCESS.has(kind)) {
         // 提问工具调用不套框：跳过当前框并收口，保证用户始终能看到并作答。
-        if (kind === 'tool-call' && f.querySelector(QUESTION_TOOL)) { current = null; continue }
+        if (kind === 'tool-call' && f.querySelector(QUESTION_TOOL)) { current = null; afterText = false; continue }
         push(f); continue
       }
       if (kind === 'assistant-step') {
         const body = bodyOf(f)
         if (body) {
           for (const c of Array.from(body.children)) {
-            if (isThinkBlock(c) || !endsHere) push(c)
+            if (isThinkBlock(c)) { push(c); continue }
+            // 模型文本（文字 / 图片 / 中断提示 …）：不进框，并在此收口当前框。
+            current = null
+            textFlows.add(f)
+            afterText = true
           }
         }
-        if (endsHere) current = null
         continue
       }
       current = null
+      afterText = false
     }
-    return boxes
+    return { boxes, textFlows }
   }
 
   /** 撤掉某一轮的折叠开关行（官方按钮接管、或这一轮已经有行了）。 */
@@ -189,30 +222,36 @@ export function apply(ctx: any): void {
 
   /** 应用单个框：折叠隐藏 / 框样式 / 缝隙 / 开关行。 */
   function applyBox(
-    box: Element[],
+    box: ProcessBox,
     seen: Set<Element>,
     withOfficial: Map<string, Element>,
     toolCalls: Map<string, number>,
     withRow: Set<string>,
   ): void {
-    const anchor = box[0].closest(FLOW) as Element
+    const items = box.items
+    const anchor = items[0].closest(FLOW) as Element
     const key = keyOf(anchor)
     const isExpanded = expandedTurns.has(key)
-    const visible = isExpanded ? box : box.slice(-2)
+    const visible = isExpanded ? items : items.slice(-2)
 
     if (!isExpanded) {
-      for (let i = 0; i < box.length - 2; i++) box[i].setAttribute(ATTR.hidden, '1')
+      for (let i = 0; i < items.length - 2; i++) items[i].setAttribute(ATTR.hidden, '1')
     }
 
     visible.forEach((el, k) => {
       const part = visible.length === 1 ? 'only' : k === 0 ? 'start' : k === visible.length - 1 ? 'end' : 'middle'
       el.setAttribute(ATTR.boxPart, part)
-      el.closest(FLOW)?.setAttribute(ATTR.flowShow, '1')
+      const flow = el.closest(FLOW) as Element | null
+      flow?.setAttribute(ATTR.flowShow, '1')
       if (k > 0) {
         const prev = visible[k - 1]
-        const sameFlow = prev.closest(FLOW) === el.closest(FLOW)
-        const gapOn = sameFlow ? el : (el.closest(FLOW) as Element)
-        gapOn.setAttribute(ATTR.gap, sameFlow ? 'cancel' : 'zero')
+        const sameFlow = prev.closest(FLOW) === flow
+        const gapOn = sameFlow ? el : flow
+        gapOn?.setAttribute(ATTR.gap, sameFlow ? 'cancel' : 'zero')
+      } else if (box.afterText && flow !== null && flow.getAttribute(ATTR.gap) !== 'zero') {
+        // 框紧跟在模型文本之后：官方折叠会让官方列的 margin-top 规则失效，这里自己补一份流间距。
+        // 若该流项已经是上一个框的延续（gap=zero），保持无缝，不覆盖。
+        flow.setAttribute(ATTR.gap, 'text')
       }
     })
 
@@ -231,7 +270,7 @@ export function apply(ctx: any): void {
     if (withRow.has(key)) return
     withRow.add(key)
 
-    const beforeEl = box[0].closest(FLOW) as Element
+    const beforeEl = items[0].closest(FLOW) as Element
     let row = rows.get(anchor)
     if (!row) {
       row = document.createElement('button')
@@ -273,21 +312,24 @@ export function apply(ctx: any): void {
     if (document.querySelector('[data-question-key], [data-plan-review-key]')) return
     observer?.disconnect()
     try {
-      for (const el of root.querySelectorAll(`[${ATTR.hidden}], [${ATTR.boxPart}], [${ATTR.gap}], [${ATTR.flowShow}]`)) {
+      for (const el of root.querySelectorAll(`[${ATTR.hidden}], [${ATTR.boxPart}], [${ATTR.gap}], [${ATTR.flowShow}], [${ATTR.textFlow}]`)) {
         el.removeAttribute(ATTR.hidden)
         el.removeAttribute(ATTR.boxPart)
         el.removeAttribute(ATTR.gap)
         el.removeAttribute(ATTR.flowShow)
+        el.removeAttribute(ATTR.textFlow)
       }
 
       const withOfficial = officialRows(root)
-      const boxes = collectBoxes(root)
+      const { boxes, textFlows } = collectBoxes(root)
+      // 模型文本永远可见：官方折叠会把它所在的整个流项藏掉，这里连同流间距一起豁免。
+      for (const flow of textFlows) flow.setAttribute(ATTR.textFlow, '1')
       // 开关行按整轮计数（一轮可能有多个过程框）。
       const toolCalls = new Map<string, number>()
       for (const box of boxes) {
-        const key = keyOf(box[0].closest(FLOW) as Element)
+        const key = keyOf(box.items[0].closest(FLOW) as Element)
         let count = toolCalls.get(key) ?? 0
-        for (const el of box) if (el.getAttribute('data-chat-flow-kind') === 'tool-call') count++
+        for (const el of box.items) if (el.getAttribute('data-chat-flow-kind') === 'tool-call') count++
         toolCalls.set(key, count)
       }
 
@@ -379,11 +421,12 @@ export function apply(ctx: any): void {
       root = null
       document.removeEventListener('click', onDocumentClick, true)
       document.removeEventListener('beforematch', onBeforeMatch, true)
-      document.querySelectorAll(`[${ATTR.hidden}], [${ATTR.boxPart}], [${ATTR.gap}], [${ATTR.flowShow}]`).forEach((el) => {
+      document.querySelectorAll(`[${ATTR.hidden}], [${ATTR.boxPart}], [${ATTR.gap}], [${ATTR.flowShow}], [${ATTR.textFlow}]`).forEach((el) => {
         el.removeAttribute(ATTR.hidden)
         el.removeAttribute(ATTR.boxPart)
         el.removeAttribute(ATTR.gap)
         el.removeAttribute(ATTR.flowShow)
+        el.removeAttribute(ATTR.textFlow)
       })
       for (const row of rows.values()) row.remove()
       rows.clear()

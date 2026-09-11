@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Cut process boxes at model text: every piece of assistant text closes the box in front of it and starts a new one after it, so a turn can hold several boxes.
+- Keep all model text outside the boxes (intermediate output was previously folded in); it now separates the boxes instead.
+- Neutralize the official `hidden="until-found"` on the flow items that hold model text, so the official collapse no longer swallows them.
+- Restore the flow gap the official `hidden` attribute removes above and after model text, including before the box that follows it.
+
 ## 0.2.1 - 2026-09-10
 
 - Declare `dsh.catalog` in `package.json` (`category: ui`, bilingual summary, `client-ui` capability) so the plugin shop publishes an authored listing instead of deriving one from the npm description.
