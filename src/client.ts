@@ -26,7 +26,8 @@ interface TurnBoxes {
  *
  * 折叠时确实藏了项（框内多于 2 项）的框，会在上边线之上再堆叠两条线，提示"里面还有东西"；
  * 那两条线可点击，点击即展开**它所属的那一个框**（点击带 = 上边线以上，点方框本体仍是原本的交互）。
- * 展开状态因此按「框」存，一轮里的多个框互不影响。
+ * 展开后同一条上边线反过来就是收回控件：鼠标移到框的上边缘时线中间浮出一个"合并/收起"图标，
+ * 点这条带即只收回这一个框。展开状态因此按「框」存，一轮里的多个框互不影响。
  *
  * 折叠开关长得和官方「过程折叠」按钮一样（一行摘要 + 右侧箭头），放在过程区上方：
  * - 官方按钮在场时，撤掉本插件这一行，直接用它当开关，并把它的箭头方向对齐本插件状态；
@@ -58,6 +59,11 @@ export function apply(ctx: any): void {
      * 标记挂在框的第一个可见项上；那两条线本身可点击（点击带 = 上边线以上），点击即展开。
      */
     stack: 'data-fold-stack',
+    /**
+     * 展开后、且收起时确实会藏项的框：上边线就是收回控件。鼠标移到框的上边缘时，
+     * 线中间浮出一个"合并/收起"图标；点这条带即只收回这一个框。
+     */
+    merge: 'data-fold-merge',
     open: 'data-open',
   } as const
   const CLASS = { row: 'dsh-fold-row', rowLabel: 'dsh-fold-row-label', rowChevron: 'dsh-fold-row-chevron' } as const
@@ -127,6 +133,22 @@ export function apply(ctx: any): void {
     }
     [${ATTR.stack}]::before { top: -11px; left: 16px; right: 16px; height: 6px; }
     [${ATTR.stack}]::after { top: -6px; left: 8px; right: 8px; height: 6px; }
+    /* 展开后：上边线变成收回控件。鼠标移到框的上边缘时，线中间浮出一个"合并/收起"图标；
+       点这条带即只收回这一个框。图标占的正是折叠时那两条堆叠线的位置，视觉上连贯。 */
+    [${ATTR.merge}] { position: relative; }
+    [${ATTR.merge}]::before {
+      content: ""; position: absolute; top: -12px; left: 50%; width: 26px; height: 12px; margin-left: -13px;
+      box-sizing: border-box; border: 1px solid ${BORDER}; border-bottom: none;
+      border-radius: 8px 8px 0 0; background: ${BG};
+      opacity: 0; transition: opacity .1s; pointer-events: auto; cursor: pointer;
+    }
+    [${ATTR.merge}]::after {
+      content: ""; position: absolute; top: -9.5px; left: 50%; width: 7px; height: 7px; margin-left: -3.5px;
+      box-sizing: border-box; border-left: 1.5px solid var(--dsw-alias-label-secondary); border-top: 1.5px solid var(--dsw-alias-label-secondary);
+      transform: rotate(45deg); opacity: 0; transition: opacity .1s; pointer-events: none;
+    }
+    [${ATTR.merge}]:hover::before, [${ATTR.merge}]:hover::after { opacity: 1; }
+    @media (prefers-reduced-motion: reduce) { [${ATTR.merge}]::before, [${ATTR.merge}]::after { transition: none; } }
     [${ATTR.hidden}] { display: none !important; }
     /* 折叠开关：与官方 TurnProcessNodeView 同一套尺寸与 token，官方按钮不在时顶替它。 */
     .${CLASS.row} { box-sizing: border-box; display: flex; align-items: center; width: 100%; min-width: 0; height: 33px; padding: 0 0 8px; border: none; border-bottom: .5px solid var(--dsw-alias-border-l2); background: none; color: var(--dsw-alias-label-secondary); font-size: 14px; line-height: 24px; text-align: left; cursor: pointer; }
@@ -301,8 +323,8 @@ export function apply(ctx: any): void {
         // 若该流项已经是上一个框的延续（gap=zero），保持无缝，不覆盖。
         flow.setAttribute(ATTR.gap, 'text')
       }
-      // 折叠且确实藏了项（>2 项）→ 给第一个可见项挂堆叠线标记，值就是这个框的键（点击只展开它）。
-      if (!isExpanded && k === 0 && items.length > 2) el.setAttribute(ATTR.stack, key)
+      // 收起时确实会藏项（>2 项）→ 折叠态挂堆叠线、展开态挂上边缘的收回控件；值都是这个框的键。
+      if (k === 0 && items.length > 2) el.setAttribute(isExpanded ? ATTR.merge : ATTR.stack, key)
     })
 
     // 官方按钮在场 → 用它当这一轮的开关：撤掉本插件这一行，并把它的箭头方向对齐本插件状态
@@ -362,13 +384,14 @@ export function apply(ctx: any): void {
     if (document.querySelector('[data-question-key], [data-plan-review-key]')) return
     observer?.disconnect()
     try {
-      for (const el of root.querySelectorAll(`[${ATTR.hidden}], [${ATTR.boxPart}], [${ATTR.gap}], [${ATTR.flowShow}], [${ATTR.textFlow}], [${ATTR.stack}]`)) {
+      for (const el of root.querySelectorAll(`[${ATTR.hidden}], [${ATTR.boxPart}], [${ATTR.gap}], [${ATTR.flowShow}], [${ATTR.textFlow}], [${ATTR.stack}], [${ATTR.merge}]`)) {
         el.removeAttribute(ATTR.hidden)
         el.removeAttribute(ATTR.boxPart)
         el.removeAttribute(ATTR.gap)
         el.removeAttribute(ATTR.flowShow)
         el.removeAttribute(ATTR.textFlow)
         el.removeAttribute(ATTR.stack)
+        el.removeAttribute(ATTR.merge)
       }
 
       const withOfficial = officialRows(root)
@@ -436,19 +459,40 @@ export function apply(ctx: any): void {
   }
 
   /**
+   * 收回**单个**框（点击展开框的上边缘）。和展开对称：不做滚动补偿 ——
+   * 藏起来的那几项原地消失，剩下的项上移补位，正好落回用户点的那条线上。
+   */
+  function collapseBox(key: string | null): void {
+    if (key === null || key === '' || !expandedBoxes.has(key)) return
+    expandedBoxes.delete(key)
+    applyFold()
+  }
+
+  /**
    * 用户点击官方折叠按钮：这是插件与官方唯一的交互点。
    * 不拦截事件 —— 官方自己也会切它的 open（它的箭头方向因此自动跟随），
    * 本插件只翻自己的状态；可见性由本插件的属性 + CSS 盾决定，与官方写入顺序无关。
    */
   function onDocumentClick(event: MouseEvent): void {
     const target = event.target as Element | null
-    // 堆叠线画在方框上边线之上：点击落在上边线以上才算点线（点方框本体保持原有行为）。
+    // 折叠框上边线以上的堆叠线：点击只展开这一个框（点方框本体保持原有行为）。
     const stack = target?.closest?.(`[${ATTR.stack}]`) as Element | null
     if (stack !== null && event.clientY < stack.getBoundingClientRect().top) {
       event.stopPropagation()
       event.preventDefault()
       expandBox(stack.getAttribute(ATTR.stack))
       return
+    }
+    // 展开框的上边缘（图标就压在这条线上）：点击只收回这一个框。
+    const merge = target?.closest?.(`[${ATTR.merge}]`) as Element | null
+    if (merge !== null) {
+      const top = merge.getBoundingClientRect().top
+      if (event.clientY >= top - 14 && event.clientY <= top + 4) {
+        event.stopPropagation()
+        event.preventDefault()
+        collapseBox(merge.getAttribute(ATTR.merge))
+        return
+      }
     }
     const row = target?.closest?.(OFFICIAL) as Element | null
     if (!row) return
@@ -499,13 +543,14 @@ export function apply(ctx: any): void {
       root = null
       document.removeEventListener('click', onDocumentClick, true)
       document.removeEventListener('beforematch', onBeforeMatch, true)
-      document.querySelectorAll(`[${ATTR.hidden}], [${ATTR.boxPart}], [${ATTR.gap}], [${ATTR.flowShow}], [${ATTR.textFlow}], [${ATTR.stack}]`).forEach((el) => {
+      document.querySelectorAll(`[${ATTR.hidden}], [${ATTR.boxPart}], [${ATTR.gap}], [${ATTR.flowShow}], [${ATTR.textFlow}], [${ATTR.stack}], [${ATTR.merge}]`).forEach((el) => {
         el.removeAttribute(ATTR.hidden)
         el.removeAttribute(ATTR.boxPart)
         el.removeAttribute(ATTR.gap)
         el.removeAttribute(ATTR.flowShow)
         el.removeAttribute(ATTR.textFlow)
         el.removeAttribute(ATTR.stack)
+        el.removeAttribute(ATTR.merge)
       })
       for (const row of rows.values()) row.remove()
       rows.clear()
