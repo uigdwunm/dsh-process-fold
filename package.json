@@ -1,6 +1,6 @@
 {
   "name": "dsh-process-fold",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Fold each DSH Web turn's thinking, tool calls and context into compact expandable process boxes cut at every piece of model text, and reuse the shipped turn-process disclosure row as the toggle whenever it exists.",
   "keywords": [
     "deepseek-harness",

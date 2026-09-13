@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1 - 2026-09-13
+
+- Lead the README with the Chinese section and keep the English one below it.
+- Add a redacted usage screenshot to the README: three collapsed process boxes, with the user message, the text between boxes and the final answer pixelated.
+- Declare `screenshots.json` in the repository root, so the plugin storefront lists that screenshot from the repository instead of ranking the images it extracts from the README.
+- Correct the 0.2.1 entry, which listed a README screenshots section the README did not have at the time.
+
 ## 0.3.0 - 2026-09-11
 
 - Cut process boxes at model text: every piece of assistant text closes the box in front of it and starts a new one after it, so a turn can hold several boxes.
@@ -14,7 +21,7 @@
 ## 0.2.1 - 2026-09-10
 
 - Declare `dsh.catalog` in `package.json` (`category: ui`, bilingual summary, `client-ui` capability) so the plugin shop publishes an authored listing instead of deriving one from the npm description.
-- Add the awesome-dsh-plugin badge, a screenshots section and a note on how the plugin differs from auto-collapse plugins to the README.
+- Add the awesome-dsh-plugin badge and a note on how the plugin differs from auto-collapse plugins to the README.
 - Reword the package description and add the `ui-plugin` keyword for npm search.
 
 ## 0.2.0 - 2026-09-10
