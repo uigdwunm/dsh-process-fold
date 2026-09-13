@@ -5,10 +5,8 @@
 [English](#english) | [中文](#中文)
 
 <p align="center">
-  <img src="docs/assets/process-fold-example.png" alt="dsh-process-fold in a DSH Web turn: folded process boxes, stacked lines above a collapsed box, and model text between boxes (content redacted)" width="860">
+  <img src="docs/assets/process-fold-example.png" alt="dsh-process-fold: a DSH Web turn with collapsed process boxes, stacked lines above a box that hides items, and model text between boxes">
 </p>
-
-<p align="center"><sub>A real turn with three collapsed process boxes. Each box keeps its latest two items; the stacked lines above a top border mark the items it is hiding, and model text stays outside the boxes. Message, tool and thinking content is redacted — <em>一段真实对话里的三个折叠过程框；框上方堆叠的线表示其中还藏着更多项，模型文本留在框外。图片中的消息、工具与思考内容已做打码处理。</em></sub></p>
 
 ## English
 
