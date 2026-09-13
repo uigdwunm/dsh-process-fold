@@ -5,7 +5,7 @@
 [English](#english) | [中文](#中文)
 
 <p align="center">
-  <img src="docs/assets/process-fold-turn.png" alt="dsh-process-fold: a DSH Web turn with a collapsed process box, stacked lines above it, and model text below. Sensitive content is covered with blocks." width="860">
+  <img src="docs/assets/process-fold-turn.png" alt="dsh-process-fold in a DSH Web turn: three collapsed process boxes, each showing a Bash call and a thinking row; the user's message, the text between boxes and the final answer are pixelated." width="900">
 </p>
 
 ## English
