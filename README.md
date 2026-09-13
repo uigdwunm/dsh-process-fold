@@ -5,7 +5,7 @@
 [English](#english) | [中文](#中文)
 
 <p align="center">
-  <img src="docs/assets/process-fold-example.png" alt="dsh-process-fold: a DSH Web turn with collapsed process boxes, stacked lines above a box that hides items, and model text between boxes">
+  <img src="docs/assets/process-fold-turn.png" alt="dsh-process-fold: a DSH Web turn with collapsed process boxes, stacked lines above a box that hides items, and model text between boxes">
 </p>
 
 ## English
