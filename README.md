@@ -2,50 +2,11 @@
 
 [![awesome · DSH plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com/p/uigdwunm/dsh-process-fold/)
 
-[English](#english) | [中文](#中文)
+[中文](#中文) | [English](#english)
 
 <p align="center">
   <img src="docs/assets/process-fold-turn.png" alt="dsh-process-fold in a DSH Web turn: three collapsed process boxes, each showing a Bash call and a thinking row; the user's message, the text between boxes and the final answer are pixelated." width="900">
 </p>
-
-## English
-
-`dsh-process-fold` is a client-side UI plugin for DeepSeek Harness Web. It folds execution steps into bordered process boxes that show only their latest two items by default.
-
-Boxes are cut at model text: every piece of assistant text closes the box in front of it and starts a new one after it, so a turn can hold several boxes. That text is never folded into a box — it stays outside and separates the boxes.
-
-When a collapsed box is hiding items, two lines are stacked above its top border, so you can see it holds more than it shows. Click those lines to expand that one box in place. Once expanded, the same top border becomes the collapse control: hover the box's top edge and a miniature of those stacked lines (about 52px wide, centred) fades in on the line — click it to fold that one box back. Each box keeps its own expanded state; the per-turn row (or the official button) still opens and closes all of that turn's boxes at once.
-
-It cooperates with the shipped turn-process disclosure instead of competing with it: while the official `N 次工具调用 ▾` row is present for a turn, that row is the only toggle — clicking it switches that turn's boxes between their latest two items and the whole process. When the official row is absent (a streaming turn, unloaded older history, the standard transcript view, or an interrupted/answerless turn), the plugin's own row takes its place: one per turn, styled like the official one (`N 次工具调用` on the left, chevron on the right, same sizes and tokens).
-
-User messages, steering messages, interactive `ask_user_question` prompts, and every piece of model text (intermediate output and the final answer) remain outside the boxes and fully visible.
-
-Unlike auto-collapse plugins that replace a finished turn's process with a single timing row, this one keeps the process in place: it folds the items into boxes you can reopen, and it never hides the user's own messages, interactive questions, errors, or model text. Stopping the plugin removes every style, attribute, label, and control it injected.
-
-### Install
-
-```sh
-dsh plugin --profile web add github:uigdwunm/dsh-process-fold
-```
-
-Restart `dsh web`, then refresh the page.
-
-### Behavior
-
-- Folds think, tool-call, and context items into bordered process boxes, and cuts a box at every piece of model text.
-- Shows the latest two items of each box while collapsed, every box's whole process when expanded.
-- Stacks two lines above the top border of a collapsed box that is hiding items; clicking those lines expands just that box, in place and without a scroll jump.
-- Turns that same top border into the collapse control once the box is open: hovering the top edge fades in a miniature of the stacked lines (about 52px wide, centred on the line), and clicking it folds that one box back (the collapsed items disappear in place, so nothing jumps).
-- Uses the official disclosure button as the toggle for that turn's boxes whenever it exists.
-- Otherwise renders one replacement row per turn — same look as the official one: 33px high, bottom hairline, `N 次工具调用` label, right-hand chevron that rotates on expand.
-- Keeps expanded state per box: the stacked lines open only their own box, while the row (or the official button) opens or closes every box of the turn.
-- Reads none of the official disclosure state: one CSS rule neutralizes the official `hidden="until-found"` for the items the plugin keeps visible (including the flow items that hold model text), and the plugin's per-turn state is only written back onto the official row's `data-open` / `aria-expanded` so its chevron matches.
-- Restores the flow gap the official `hidden` attribute removes around model text and after it.
-- Follows browser find (`beforematch`) into the expanded state.
-- Expands and collapses without moving content below the toggle in the viewport.
-- Keeps all model text outside process boxes; it separates the boxes instead.
-- Treats `user`, `steering`, `ask_user_question`, model text, `turn-error`, `turn-max-tokens`, and `turn-process` as process boundaries.
-- Removes all injected styles, attributes, labels, and controls when the plugin stops.
 
 ## 中文
 
@@ -94,6 +55,45 @@ dsh plugin --profile web add github:uigdwunm/dsh-process-fold
 - `[data-chat-turn]` / `[data-chat-flow-key]`：轮次号（折叠状态的键）与流项唯一键
 - `[data-turn-process]`：官方折叠按钮（点击源 + 是否在场的判据）
 - `[data-turn-process-member]`：官方的过程成员标记（用于 Ctrl+F 跟随）
+
+## English
+
+`dsh-process-fold` is a client-side UI plugin for DeepSeek Harness Web. It folds execution steps into bordered process boxes that show only their latest two items by default.
+
+Boxes are cut at model text: every piece of assistant text closes the box in front of it and starts a new one after it, so a turn can hold several boxes. That text is never folded into a box — it stays outside and separates the boxes.
+
+When a collapsed box is hiding items, two lines are stacked above its top border, so you can see it holds more than it shows. Click those lines to expand that one box in place. Once expanded, the same top border becomes the collapse control: hover the box's top edge and a miniature of those stacked lines (about 52px wide, centred) fades in on the line — click it to fold that one box back. Each box keeps its own expanded state; the per-turn row (or the official button) still opens and closes all of that turn's boxes at once.
+
+It cooperates with the shipped turn-process disclosure instead of competing with it: while the official `N 次工具调用 ▾` row is present for a turn, that row is the only toggle — clicking it switches that turn's boxes between their latest two items and the whole process. When the official row is absent (a streaming turn, unloaded older history, the standard transcript view, or an interrupted/answerless turn), the plugin's own row takes its place: one per turn, styled like the official one (`N 次工具调用` on the left, chevron on the right, same sizes and tokens).
+
+User messages, steering messages, interactive `ask_user_question` prompts, and every piece of model text (intermediate output and the final answer) remain outside the boxes and fully visible.
+
+Unlike auto-collapse plugins that replace a finished turn's process with a single timing row, this one keeps the process in place: it folds the items into boxes you can reopen, and it never hides the user's own messages, interactive questions, errors, or model text. Stopping the plugin removes every style, attribute, label, and control it injected.
+
+### Install
+
+```sh
+dsh plugin --profile web add github:uigdwunm/dsh-process-fold
+```
+
+Restart `dsh web`, then refresh the page.
+
+### Behavior
+
+- Folds think, tool-call, and context items into bordered process boxes, and cuts a box at every piece of model text.
+- Shows the latest two items of each box while collapsed, every box's whole process when expanded.
+- Stacks two lines above the top border of a collapsed box that is hiding items; clicking those lines expands just that box, in place and without a scroll jump.
+- Turns that same top border into the collapse control once the box is open: hovering the top edge fades in a miniature of the stacked lines (about 52px wide, centred on the line), and clicking it folds that one box back (the collapsed items disappear in place, so nothing jumps).
+- Uses the official disclosure button as the toggle for that turn's boxes whenever it exists.
+- Otherwise renders one replacement row per turn — same look as the official one: 33px high, bottom hairline, `N 次工具调用` label, right-hand chevron that rotates on expand.
+- Keeps expanded state per box: the stacked lines open only their own box, while the row (or the official button) opens or closes every box of the turn.
+- Reads none of the official disclosure state: one CSS rule neutralizes the official `hidden="until-found"` for the items the plugin keeps visible (including the flow items that hold model text), and the plugin's per-turn state is only written back onto the official row's `data-open` / `aria-expanded` so its chevron matches.
+- Restores the flow gap the official `hidden` attribute removes around model text and after it.
+- Follows browser find (`beforematch`) into the expanded state.
+- Expands and collapses without moving content below the toggle in the viewport.
+- Keeps all model text outside process boxes; it separates the boxes instead.
+- Treats `user`, `steering`, `ask_user_question`, model text, `turn-error`, `turn-max-tokens`, and `turn-process` as process boundaries.
+- Removes all injected styles, attributes, labels, and controls when the plugin stops.
 
 ## Development
 
