@@ -107,6 +107,23 @@ The browser source is in `src/client.ts`; the prebuilt DSH client bundle is comm
 
 Original requirements notes: [`docs/requirements.md`](docs/requirements.md).
 
+### Releasing
+
+Attach **two** tarballs to every release, not one:
+
+```sh
+npm version <version> --no-git-tag-version   # then date the changelog section
+git commit -am "chore(release): <version>"
+git tag -a v<version> && git push origin main v<version>
+npm pack && cp dsh-process-fold-<version>.tgz dsh-process-fold.tgz
+gh release create v<version> dsh-process-fold-<version>.tgz dsh-process-fold.tgz
+```
+
+`dsh-process-fold-<version>.tgz` is the archive. `dsh-process-fold.tgz` is the version-free name the
+[plugin list](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin) resolves through
+`releases/latest/download/` — that URL takes the filename literally, so a release that ships only the
+versioned name leaves the listing broken until someone notices.
+
 ## License
 
 MIT
